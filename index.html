@@ -409,6 +409,18 @@ body.has-verdict-bar { padding-top: 56px; }
   <p class="links-sub" id="links-counter">目視確認: 0 / 3　自動取得: 0 / 3</p>
 </div>
 
+<!-- ③-1.5 降水レーダー / 降水予報マップ（出発地中心・出し分け） -->
+<div class="section" id="radar-section" style="display:none">
+  <h2 id="radar-title">🌧️ 降水レーダー</h2>
+  <p id="radar-note" style="font-size:0.76rem; color:#718096; margin:-4px 0 8px"></p>
+  <div style="position:relative; width:100%; border-radius:12px; overflow:hidden; border:1px solid #e2e8f0">
+    <iframe id="radar-frame" title="降水レーダー/降水予報マップ" loading="lazy"
+      style="width:100%; height:360px; border:0; display:block"></iframe>
+  </div>
+  <p id="radar-link" style="margin-top:8px; text-align:center"></p>
+  <p class="data-src">データ: Windy.com（当日=レーダー観測 / 未来日=降水予報）</p>
+</div>
+
 <!-- ③-2 天気概況（気象庁） -->
 <div class="section" id="overview-section" style="display:none">
   <h2>📰 天気概況（気象庁） <span class="h2-sub" id="overview-meta"></span></h2>
@@ -834,6 +846,7 @@ async function fetchAll() {
       fetchOverview(dest.warnPref),
     ]);
     renderOverview(overview);
+    renderRadar(start, dateStr, timeStr);
     renderDepWeather(locData, dateStr, depH, timeStr);
     // 予報データが1地点も無い場合は判定せず明示（誤った「出発OK」を防ぐ）
     const hasData = locData.some(d => getIdxRange(d.h.time, dateStr, depH, TRIP_H).length > 0);
@@ -1131,6 +1144,42 @@ function renderDepWeather(locData, dateStr, depH, timeStr) {
 }
 
 // ──────────────────────────────────────────────────────────────────────────────
+// 降水レーダー / 降水予報マップ（出発地中心・出し分け）
+//   当日出発 → Windyレーダー（観測）＋ JMAナウキャストへのリンク
+//   未来日出発 → Windy降水予報マップ（時間スライダーで出発日時へ）
+// ──────────────────────────────────────────────────────────────────────────────
+function renderRadar(start, dateStr, timeStr) {
+  const sec = document.getElementById('radar-section');
+  const todayStr = toDateStr(new Date());
+  const isToday = dateStr === todayStr;
+  const lat = start.lat.toFixed(3), lon = start.lon.toFixed(3);
+  const overlay = isToday ? 'radar' : 'rain';
+
+  const wp = new URLSearchParams({
+    lat, lon, detailLat: lat, detailLon: lon,
+    zoom: '9', level: 'surface', overlay,
+    marker: 'true', message: 'true', metricRain: 'mm', type: 'map',
+  });
+  document.getElementById('radar-frame').src = `https://embed.windy.com/embed2.html?${wp}`;
+
+  document.getElementById('radar-title').textContent =
+    isToday ? '🌧️ 雨雲レーダー（観測・出発地）' : '🌧️ 降水予報マップ（出発地）';
+  document.getElementById('radar-note').textContent = isToday
+    ? `${start.name}周辺の現在の雨雲です。直前の出発判断にお使いください。`
+    : `${start.name}周辺の降水予報です。マップ下部の時間スライダーを ${dateStr} ${timeStr} 付近に合わせてご確認ください（観測ではなく予報です）。`;
+
+  // 当日はJMAナウキャスト（観測・高精度）へのリンクも提示（埋め込み不可のためリンク）
+  const linkEl = document.getElementById('radar-link');
+  if (isToday) {
+    const jma = `https://www.jma.go.jp/bosai/nowc/#zoom:10/lat:${lat}/lon:${lon}/colordepth:normal/elements:hrpns`;
+    linkEl.innerHTML = `<a href="${jma}" target="_blank" rel="noopener" class="link-btn" style="display:inline-block; padding:8px 14px">☔ 気象庁ナウキャスト（高精度・別タブ）</a>`;
+  } else {
+    linkEl.innerHTML = '';
+  }
+  sec.style.display = 'block';
+}
+
+// ──────────────────────────────────────────────────────────────────────────────
 // 季節の注意点（注意喚起のみ・判定カウントには非加算）
 //   季節は出発日の「月」で判定（A案）。ただし熱中症・底冷えなど気温依存の項目は
 //   実気温のしきい値超えでも表示する（A＋C折衷）。
@@ -1360,6 +1409,8 @@ function resetAll() {
   box.textContent = '出発日時・目的地を選択して天気を自動取得してください';
   document.getElementById('counter').textContent = '　';
   document.getElementById('links-counter').textContent = '目視確認: 0/3　自動取得: 0/3';
+  document.getElementById('radar-section').style.display = 'none';
+  document.getElementById('radar-frame').src = 'about:blank';
   document.getElementById('overview-section').style.display = 'none';
   document.getElementById('season-section').style.display = 'none';
   document.getElementById('sun-info').style.display = 'none';
